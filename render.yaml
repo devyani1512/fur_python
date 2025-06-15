@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: atlas-validator
+    env: python
+    branch: main  # or the branch name you're deploying from
+    buildCommand: ""
+    startCommand: gunicorn validate:app
+    plan: free
+    autoDeploy: true
