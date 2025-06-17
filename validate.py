@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import re
 
 app = Flask(__name__)
 
@@ -13,16 +14,19 @@ def validate_place():
 
     try:
         print(f"🔍 Validating place: {place}")
+
         url = "https://en.wikipedia.org/w/api.php"
         params = {
             "action": "query",
             "titles": place,
-            "format": "json"
+            "format": "json",
+            "prop": "extracts",
+            "exintro": True,
+            "explaintext": True
         }
 
-        # ✅ Add headers with a proper User-Agent
         headers = {
-            "User-Agent": "AtlasGameValidator/1.0 (https://the-game-q9mr.onrender.com)"
+            "User-Agent": "AtlasGameValidator/1.0"
         }
 
         response = requests.get(url, params=params, headers=headers)
@@ -31,16 +35,36 @@ def validate_place():
         pages = data.get("query", {}).get("pages", {})
         page_id = next(iter(pages))
 
-        valid = page_id != "-1"
+        if page_id == "-1":
+            return jsonify({"place": place, "valid": False, "reason": "Page not found"})
+
+        full_extract = pages[page_id].get("extract", "").strip()
+        first_line = full_extract.split('\n')[0].lower()
+        full_text = full_extract.lower()
+
+        # ✅ Match geographic keywords in the first sentence
+        keywords = [
+            "city", "country", "town", "village", "state", "province", "district", "region",
+            "territory", "capital", "municipality", "island", "continent", "mountain", "river"
+        ]
+        valid = any(re.search(rf"\b{word}\b", first_line) for word in keywords)
+
+        # ❌ Disqualify if disqualifying terms appear anywhere
+        disqualifiers = [
+            "emperor", "king", "queen", "president", "actor", "singer", "fictional",
+            "was born", "writer", "poet", "scientist", "politician", "general", "character", "novelist"
+        ]
+        if any(term in full_text for term in disqualifiers):
+            valid = False
 
         return jsonify({
             "place": place,
             "valid": valid,
+            "extract_snippet": first_line,
             "source": "Wikipedia"
         })
 
     except Exception as e:
-        print(f"❌ Exception occurred: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
