@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import re
+import string
 
 app = Flask(__name__)
 
@@ -40,26 +41,30 @@ def validate_place():
 
         full_extract = pages[page_id].get("extract", "").strip()
         first_line = full_extract.split('\n')[0].lower()
-        full_text = full_extract.lower()
 
-        # ✅ Match geographic keywords in the first sentence
+        # Clean punctuation to improve keyword matching
+        clean_line = re.sub(rf"[{string.punctuation}]", " ", first_line)
+
+        # ✅ Match geographic keywords
         keywords = [
             "city", "country", "town", "village", "state", "province", "district", "region",
             "territory", "capital", "municipality", "island", "continent", "mountain", "river"
         ]
-        valid = any(re.search(rf"\b{word}\b", first_line) for word in keywords)
+        matched_keywords = [word for word in keywords if re.search(rf"\b{word}\b", clean_line)]
+        valid = len(matched_keywords) > 0
 
-        # ❌ Disqualify if disqualifying terms appear anywhere
+        # ❌ Disqualify if clearly a person or profession
         disqualifiers = [
             "emperor", "king", "queen", "president", "actor", "singer", "fictional",
             "was born", "writer", "poet", "scientist", "politician", "general", "character", "novelist"
         ]
-        if any(term in full_text for term in disqualifiers):
+        if any(term in clean_line for term in disqualifiers):
             valid = False
 
         return jsonify({
             "place": place,
             "valid": valid,
+            "matched_keywords": matched_keywords,
             "extract_snippet": first_line,
             "source": "Wikipedia"
         })
@@ -69,6 +74,7 @@ def validate_place():
 
 if __name__ == '__main__':
     app.run(port=5001)
+
 
 # from flask import Flask, request, jsonify
 # import undetected_chromedriver as uc
