@@ -16,6 +16,7 @@ def validate_place():
     try:
         print(f"🔍 Validating place: {place}")
 
+        # Wikipedia API call
         url = "https://en.wikipedia.org/w/api.php"
         params = {
             "action": "query",
@@ -27,53 +28,62 @@ def validate_place():
         }
 
         headers = {
-            "User-Agent": "AtlasGameValidator/1.1"
+            "User-Agent": "AtlasGameValidator/2.0"
         }
 
         response = requests.get(url, params=params, headers=headers)
         data = response.json()
-
         pages = data.get("query", {}).get("pages", {})
         page_id = next(iter(pages))
 
         if page_id == "-1":
-            return jsonify({"place": place, "valid": False, "reason": "Wikipedia page not found"})
+            return jsonify({
+                "place": place,
+                "valid": False,
+                "reason": "Wikipedia page not found"
+            })
 
-        full_extract = pages[page_id].get("extract", "").strip()
-        lines = full_extract.split('\n')
-        intro_text = ' '.join(lines[:2]).lower()
+        full_extract = pages[page_id].get("extract", "").strip().lower()
 
-        # Clean punctuation
-        clean_text = re.sub(rf"[{string.punctuation}]", " ", intro_text)
+        # Clean text: remove punctuation and extra spaces
+        clean_text = re.sub(rf"[{string.punctuation}]", " ", full_extract)
+        clean_text = re.sub(r"\s+", " ", clean_text)
 
-        # ✅ Match geographic keywords
+        # ✅ Keywords that indicate geographic relevance
         keywords = [
             "city", "country", "town", "village", "state", "province", "district",
             "region", "territory", "capital", "municipality", "island", "continent",
-            "mountain", "river", "country in", "capital city", "nation", "geographic"
+            "mountain", "river", "country in", "capital of", "metropolitan", "area",
+            "geographical", "located in", "place in"
         ]
-        matched_keywords = [word for word in keywords if re.search(rf"\b{word}\b", clean_text)]
+
+        matched_keywords = [word for word in keywords if word in clean_text]
         valid = len(matched_keywords) > 0
 
-        # ❌ Disqualify if clearly a person or profession
+        # ❌ Disqualify if clearly a person, profession, or fictional
         disqualifiers = [
-            "emperor", "king", "queen", "president", "actor", "singer", "fictional",
-            "was born", "writer", "poet", "scientist", "politician", "general",
-            "character", "novelist", "footballer", "player"
+            "was born", "fictional", "character", "king", "queen", "singer", "actor",
+            "president", "emperor", "scientist", "writer", "poet", "politician",
+            "footballer", "novelist", "player", "artist", "band", "musician"
         ]
-        if any(term in clean_text for term in disqualifiers):
+
+        disqualified = any(term in clean_text for term in disqualifiers)
+
+        if disqualified:
             valid = False
 
         return jsonify({
             "place": place,
             "valid": valid,
             "matched_keywords": matched_keywords,
-            "extract_snippet": intro_text[:200],
+            "disqualified": disqualified,
+            "extract_snippet": full_extract[:300],
             "source": "Wikipedia"
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(port=5001)
